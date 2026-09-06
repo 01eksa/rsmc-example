@@ -65,7 +65,9 @@ int main(void)
 
     RsmcBoard board;
     rsmc_set_start_position(&board);
-    RsmcGameState current_state;
+    RsmcGameState current_state = rsmc_get_game_state(&board);
+
+    show_game_state(current_state, &board);
 
     while (true) {
         // process moves
