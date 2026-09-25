@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD 11)
 include(FetchContent)
 FetchContent_Declare(rsmc
         GIT_REPOSITORY https://github.com/01eksa/rsmc.git
-        GIT_TAG v0.1.0
+        GIT_TAG main
 )
 FetchContent_MakeAvailable(rsmc)
 

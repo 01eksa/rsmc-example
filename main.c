@@ -1,44 +1,70 @@
 #include "rsmc.h"
-#include <assert.h>
+
+#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
 
 #define CLEAR "\033[2J\033[H"
 
-RsmcCoords ask_move(const RsmcMoves valid_moves)
+// new ABI is optimized for efficiency and does not have much abstractions
+// so I'll use this helper to convert loop indexes into bitmasks in one line
+static RsmcBitMask bitmask_from_x_y(const int x, const int y)
 {
-    getchar(); // wait for Enter before making a random move
-    return valid_moves.coords[rand() % valid_moves.count];
+    const int index = y * RsmcBoardSize + x;
+    return rsmc_index_to_bitmask(index);
 }
 
-void show_game_state(const RsmcGameState state, const RsmcBoard *board)
+static RsmcBitMask ask_move(const RsmcBitMap valid_moves, const RsmcPlayer player)
+{
+    while (true) {
+        // get coords from user
+        char x, y;
+        printf("Enter moves as two digits (e.g. 3 4). Board is 0-indexed.\n");
+        printf("%s: ", player == RsmcPlayerBlack ? "X" : "O");
+        scanf(" %c %c", &x, &y);
+
+        x -= '0';
+        y -= '0';
+
+        // convert coords into bitmask
+        const RsmcBitMask move = bitmask_from_x_y(x, y);
+
+        // simple check
+        if (valid_moves & move) {
+            return move;
+        }
+
+        printf("Invalid move!\n");
+    }
+}
+
+static void show_game_state(const RsmcGameState state, const RsmcBoard board,
+                            const RsmcBitMask valid_moves)
 {
     printf(CLEAR);
 
+
+    printf("X score: %d\n"
+           "O score: %d\n",
+           state.score.black_score, state.score.white_score);
     for (int y = 0; y < RsmcBoardSize; y++) {
         for (int x = 0; x < RsmcBoardSize; x++) {
-            switch (board->cells[y][x]) {
-                case RsmcBoardCellBlack:
-                    printf(" X ");
-                    break;
-                case RsmcBoardCellWhite:
-                    printf(" O ");
-                    break;
-                default:
-                    printf(" _ ");
-                    break;
+            const RsmcBitMask cell_mask = bitmask_from_x_y(x, y);
+
+            if (cell_mask & board.black) {
+                printf(" X ");
+            } else if (cell_mask & board.white) {
+                printf(" O ");
+            } else if (cell_mask & valid_moves) {
+                printf(" * ");
+            } else {
+                printf(" _ ");
             }
         }
         printf("\n");
     }
-
-    printf("Player 1 score: %d\n"
-           "Player 2 score: %d\n",
-           state.score.black_score, state.score.white_score);
 }
 
-void show_game_result(const RsmcGameStatus result)
+static void show_game_result(const RsmcGameStatus result)
 {
     switch (result) {
         case RsmcGameStatusBlackWin:
@@ -58,39 +84,26 @@ void show_game_result(const RsmcGameStatus result)
 
 int main(void)
 {
-    srand(time(NULL));
-
     // first setup
     RsmcPlayer current_player = RsmcPlayerBlack;
+    RsmcBoard board = rsmc_get_start_position();
+    RsmcGameState current_state = rsmc_get_game_state(board);
 
-    RsmcBoard board;
-    rsmc_set_start_position(&board);
-    RsmcGameState current_state = rsmc_get_game_state(&board);
-
-    show_game_state(current_state, &board);
-
-    while (true) {
+    do {
         // process moves
-        const RsmcMoves valid_moves = rsmc_get_valid_moves(&board, current_player);
+        const RsmcBitMap valid_moves = rsmc_get_valid_moves(board, current_player);
+        show_game_state(current_state, board, valid_moves);
 
-        if (valid_moves.count > 0) {
-            const RsmcCoords chosen_move = ask_move(valid_moves);
-            const bool ok = rsmc_apply_move(&board, chosen_move, current_player);
-            assert(ok); // chosen_move is guaranteed valid, taken from valid_moves
+        if (valid_moves) {
+            const RsmcBitMask chosen_move = ask_move(valid_moves, current_player);
+            board = rsmc_apply_move(board, chosen_move, current_player);
         }
 
         // update info about game state
-        current_state = rsmc_get_game_state(&board);
-        show_game_state(current_state, &board);
-
-        if (current_state.game_status != RsmcGameStatusContinue) {
-            break; // game end
-        }
-
         current_player = !current_player; // toggling guaranteed by API
-    }
+        current_state = rsmc_get_game_state(board);
+    } while (current_state.game_status == RsmcGameStatusContinue);
 
     show_game_result(current_state.game_status);
-
     return 0;
 }
